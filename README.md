@@ -15,7 +15,7 @@ End-to-end analysis to identify the best U.S. city for developing a **Class B ap
 4. Sensitivity analysis for risk assessment
 
 ## Tools
-Excel, Python (pandas, numpy, matplotlib), Streamlit (link)
+Excel, Python (pandas, numpy, matplotlib), Streamlit (https://real-estate-market-analysis.streamlit.app)
 
 ## Key Insight
 **New Hope** selected as the most promising market based on growth, vacancy, and development potential.
