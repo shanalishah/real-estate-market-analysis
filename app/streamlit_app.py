@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -6,180 +5,180 @@ import streamlit as st
 
 st.set_page_config(page_title="CRE Market & Development Analysis", layout="wide")
 
-# -------- Paths --------
+# ---------- Paths ----------
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-ANALYSIS_XLSX = (ROOT / "analysis" / "CRE_Data_SpringA2025_Analysis.xlsx")
+ANALYSIS = ROOT / "analysis" / "CRE_Data_SpringA2025_Analysis.xlsx"
 
 FILES = {
     "City Summary": DATA / "City_Level_Market_Summary.csv",
     "Development Potential": DATA / "City_Development_Potential.csv",
     "New Hope Pro Forma": DATA / "New_Hope_Class_B_Analysis.csv",
+    "New Hope Units": DATA / "New_Hope_Class_B_Unit_Data.csv",
 }
 
-# -------- Loaders --------
+# ---------- Loaders ----------
 @st.cache_data(show_spinner=False)
-def read_csv(path: Path) -> pd.DataFrame | None:
-    if path.exists():
+def read_csv(p: Path) -> pd.DataFrame | None:
+    if p.exists():
         try:
-            return pd.read_csv(path)
+            return pd.read_csv(p)
         except Exception as e:
-            st.warning(f"Could not read {path.name}: {e}")
+            st.warning(f"Could not read {p.name}: {e}")
     return None
 
 @st.cache_data(show_spinner=False)
-def read_excel_preview(path: Path, nrows=20) -> dict[str, pd.DataFrame]:
-    out: dict[str, pd.DataFrame] = {}
-    if path.exists():
+def read_excel_preview(p: Path, nrows=15) -> dict[str, pd.DataFrame]:
+    out = {}
+    if p.exists():
         try:
-            xls = pd.ExcelFile(path)
+            xls = pd.ExcelFile(p)
             for sh in xls.sheet_names:
                 try:
                     out[sh] = xls.parse(sh, nrows=nrows)
                 except Exception:
                     pass
         except Exception as e:
-            st.warning(f"Could not open {path.name}: {e}")
+            st.warning(f"Could not open {p.name}: {e}")
     return out
 
-# -------- UI: Header --------
-st.title("Commercial Real Estate Market & Development Analysis")
-st.caption("City KPIs, development potential, and an 85-unit Class B pro forma (read-only showcase).")
+def pct(x):
+    x = pd.to_numeric(x, errors="coerce")
+    return (x * 100).round(1).astype("float")
 
-# -------- Tabs --------
+# ---------- Header ----------
+st.title("Commercial Real Estate Market & Development Analysis")
+st.caption("City KPIs, development scoring, and an 85-unit Class B pro forma (Excel-first).")
+
+# ---------- Tabs ----------
 tab_overview, tab_kpis, tab_dev, tab_newhope = st.tabs(
     ["Overview", "Market KPIs", "Development Potential", "New Hope Pro Forma"]
 )
 
-# -------- Overview --------
+# ---------- Overview ----------
 with tab_overview:
-    st.subheader("Project Files")
+    st.subheader("Files Detected")
     c1, c2 = st.columns(2)
     with c1:
         for label, path in FILES.items():
             st.write(f"- **{label}:** `{path.name}` — " + ("✅ found" if path.exists() else "❌ missing"))
     with c2:
-        x_ok = ANALYSIS_XLSX.exists()
-        st.write(f"- **Workbook:** `{ANALYSIS_XLSX.name}` — " + ("✅ found" if x_ok else "❌ missing"))
+        st.write(f"- **Excel Model:** `{ANALYSIS.name}` — " + ("✅ found" if ANALYSIS.exists() else "❌ missing"))
+
+    # Executive Summary (auto)
+    st.divider()
+    st.subheader("Executive Summary")
+    city = read_csv(FILES["City Summary"])
+    dev = read_csv(FILES["Development Potential"])
+    pf = read_csv(FILES["New Hope Pro Forma"])
+
+    summary_lines = []
+    if dev is not None and "Score" in dev.columns:
+        top_city = dev.sort_values("Score", ascending=False)["City"].iloc[0]
+        summary_lines.append(f"**Top development score:** {top_city}")
+    if city is not None:
+        # Try to pull New Hope’s KPIs
+        try:
+            nh = city[city["City"].str.lower() == "new hope"].iloc[0]
+            rg = nh.get("Avg Rent CAGR", np.nan)
+            vac = nh.get("Avg Vacancy", np.nan)
+            summary_lines.append(f"**New Hope KPIs:** Rent CAGR ~ {pct(rg)}%, Vacancy ~ {pct(vac)}%")
+        except Exception:
+            pass
+    if pf is not None:
+        # Headline metrics from pro forma if present
+        head = []
+        for k in ["IRR", "NOI Margin", "DSCR", "Cap Rate"]:
+            for c in pf.columns:
+                if c.lower().startswith(k.lower().replace(" ", "")) or c.lower().startswith(k.lower()):
+                    v = pd.to_numeric(pf[c], errors="coerce").dropna()
+                    if not v.empty:
+                        if k in ["IRR", "NOI Margin", "Cap Rate"]:
+                            head.append(f"{k}: {v.iloc[0]:.1%}" if v.iloc[0] <= 1.5 else f"{k}: {v.iloc[0]:.2f}")
+                        else:
+                            head.append(f"{k}: {v.iloc[0]:.2f}")
+                        break
+        if head:
+            summary_lines.append("**New Hope Pro Forma:** " + " · ".join(head))
+
+    if summary_lines:
+        for line in summary_lines:
+            st.write("• " + line)
+        st.info(
+            "We screened markets via NOI, Vacancy, and Rent CAGR. While the scorecard leader differs, "
+            "New Hope offered the best **risk-adjusted** profile and the strongest **NOI margin** under our assumptions."
+        )
+    else:
+        st.info("Add CSVs to /data and the Excel model to /analysis to populate the summary.")
 
     st.divider()
     st.subheader("Workbook Preview")
-    previews = read_excel_preview(ANALYSIS_XLSX)
+    previews = read_excel_preview(ANALYSIS)
     if previews:
-        # Show up to 3 sheets
         for i, (sheet, df) in enumerate(previews.items()):
             st.markdown(f"**Sheet:** {sheet}")
             st.dataframe(df, use_container_width=True)
-            if i >= 2:
+            if i >= 2:  # show up to 3 sheets
                 break
     else:
-        st.info("No Excel preview available (file missing or unreadable).")
+        st.caption("No Excel preview available.")
 
-# -------- Market KPIs --------
+# ---------- Market KPIs ----------
 with tab_kpis:
     st.subheader("City-level KPIs")
-    df_city = read_csv(FILES["City Summary"])
-    if df_city is None:
-        st.info("`City_Level_Market_Summary.csv` not found in /data.")
+    df = read_csv(FILES["City Summary"])
+    if df is None:
+        st.info("Upload `City_Level_Market_Summary.csv` to /data.")
     else:
-        # Identify likely city column
-        norm = {c.lower(): c for c in df_city.columns}
-        city_col = norm.get("city") or norm.get("market") or df_city.columns[0]
+        # Present as readable table (convert rates to %)
+        view = df.copy()
+        for col in view.columns:
+            if "Vacancy" in col or "CAGR" in col:
+                view[col] = pct(view[col])
+        st.dataframe(view, use_container_width=True)
 
-        # Pick a KPI to sort
-        kpi_options = [c for c in df_city.columns if c != city_col]
-        default_idx = 0 if not kpi_options else min(1, len(kpi_options)-1)
-
+        # Simple ranking pickers
         left, right = st.columns([2,1])
-        with left:
-            cities = sorted(df_city[city_col].dropna().unique().tolist())
-            pick = st.multiselect("Filter markets (optional)", cities, default=cities[:8])
         with right:
-            kpi = st.selectbox("Sort by KPI", kpi_options, index=default_idx)
+            sort_col = st.selectbox("Sort by", [c for c in view.columns if c != "City"])
+        with left:
+            st.markdown(f"**Top Cities by {sort_col}**")
+            show = view.sort_values(sort_col, ascending=False).head(10)
+            st.bar_chart(show.set_index("City")[sort_col])
 
-        df_view = df_city.copy()
-        if pick:
-            df_view = df_view[df_view[city_col].isin(pick)]
-        # Ensure numeric for sort; fallback safe
-        if pd.api.types.is_numeric_dtype(df_view[kpi]):
-            df_view = df_view.sort_values(by=kpi, ascending=False)
-        st.dataframe(df_view, use_container_width=True)
-
-        # Top 10 bar chart if numeric
-        if pd.api.types.is_numeric_dtype(df_view[kpi]):
-            st.markdown(f"**Top 10 by {kpi}**")
-            st.bar_chart(df_view[[city_col, kpi]].set_index(city_col).head(10))
-
-# -------- Development Potential --------
+# ---------- Development Potential ----------
 with tab_dev:
-    st.subheader("Development Potential by City")
-    df_dev = read_csv(FILES["Development Potential"])
-    if df_dev is None:
-        st.info("`City_Development_Potential.csv` not found in /data.")
+    st.subheader("Development Score (Composite)")
+    df = read_csv(FILES["Development Potential"])
+    if df is None:
+        st.info("Upload `City_Development_Potential.csv` to /data.")
     else:
-        st.dataframe(df_dev, use_container_width=True)
+        # Normalize naming
+        if "Development Score" not in df.columns and "Score" in df.columns:
+            df = df.rename(columns={"Score": "Development Score"})
+        st.dataframe(df, use_container_width=True)
 
-        # find a likely score column to chart
-        score_col = None
-        for cand in ["score","development_score","rank","composite_score","index"]:
-            for c in df_dev.columns:
-                if c.lower() == cand:
-                    score_col = c
-                    break
-            if score_col: break
+        # Chart
+        if "Development Score" in df.columns:
+            st.markdown("**Top Markets by Development Score**")
+            st.bar_chart(df.set_index("City")["Development Score"].sort_values(ascending=False).head(10))
 
-        if score_col:
-            name_col_candidates = [c for c in df_dev.columns if c.lower() in {"city","market","msa"}]
-            name_col = name_col_candidates[0] if name_col_candidates else df_dev.columns[0]
-            top = df_dev.sort_values(by=score_col, ascending=False).head(10)
-            st.markdown(f"**Top Markets by `{score_col}`**")
-            st.bar_chart(top.set_index(name_col)[score_col])
-
-# -------- New Hope Pro Forma --------
+# ---------- New Hope Pro Forma ----------
 with tab_newhope:
     st.subheader("New Hope – 85-Unit Class B Pro Forma")
-    df_pf = read_csv(FILES["New Hope Pro Forma"])
-
-    if df_pf is None:
-        st.info("`New_Hope_Class_B_Analysis.csv` not found in /data.")
+    df = read_csv(FILES["New Hope Pro Forma"])
+    if df is None:
+        st.info("Upload `New_Hope_Class_B_Analysis.csv` to /data.")
     else:
         # Show helpful columns if present
-        keep_like = ["NOI","NOI Margin","Operating Expenses","Cap Rate","IRR","NPV",
-                     "DSCR","Debt Service","Revenue","Rent","Cash Flow"]
-        show_cols = [c for c in df_pf.columns if any(k.lower() in c.lower() for k in keep_like)]
-        st.dataframe(df_pf[show_cols] if show_cols else df_pf, use_container_width=True)
+        prefer = ["NOI","NOI Margin","Operating Expenses","Revenue","IRR","DSCR","Cap Rate","Cash Flow"]
+        cols = [c for c in df.columns if any(k.lower().replace(" ", "") in c.lower().replace(" ", "") for k in prefer)]
+        show = df[cols] if cols else df
+        # rate-like columns to %
+        for c in show.columns:
+            if any(k in c.lower() for k in ["irr","margin","cap","rate"]):
+                show[c] = pd.to_numeric(show[c], errors="coerce")
+        st.dataframe(show, use_container_width=True)
 
-        # Small KPI cards (if present)
-        kpi_cards = {}
-        for k in ["IRR","NOI Margin","DSCR","Cap Rate"]:
-            for c in df_pf.columns:
-                if c.lower().startswith(k.lower()):
-                    # take first non-null numeric value as a summary
-                    s = pd.to_numeric(df_pf[c], errors="coerce").dropna()
-                    if not s.empty:
-                        kpi_cards[k] = s.iloc[0]
-                        break
-
-        if kpi_cards:
-            st.markdown("**Headline KPIs (from pro forma):**")
-            cols = st.columns(len(kpi_cards))
-            for (k, v), col in zip(kpi_cards.items(), cols):
-                with col:
-                    if isinstance(v, (int, float)) and not pd.isna(v):
-                        if "rate" in k.lower() or "irr" in k.lower() or "margin" in k.lower():
-                            col.metric(k, f"{v:,.2%}" if v <= 1.0 else f"{v:,.2f}")
-                        else:
-                            col.metric(k, f"{v:,.2f}")
-                    else:
-                        col.metric(k, str(v))
-
-        st.download_button(
-            "Download Pro Forma CSV",
-            data=df_pf.to_csv(index=False),
-            file_name="New_Hope_Pro_Forma.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
-
-st.markdown("---")
-st.caption("Read-only showcase of KPIs, development scoring, and the New Hope pro forma.")
+        # Download
+        st.download_button("Download Pro Forma CSV", data=df.to_csv(index=False), file_name="New_Hope_Pro_Forma.csv")
