@@ -1,7 +1,22 @@
-*.pkl
-*.log
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Office temp/locks
+~$*.pptx
+~$*.xlsx
+~$*.docx
+
+# Python/Jupyter (in case you add later)
 __pycache__/
-.ipynb_checkpoints
-*.DS_Store
-*.xlsx
-*.csv
+.ipynb_checkpoints/
+*.pyc
+.venv/
+.env
+
+# Large model artifacts (not used here)
+*.pkl
+*.joblib
