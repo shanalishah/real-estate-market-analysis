@@ -1,22 +1,13 @@
-# OS / editor
+# OS files
 .DS_Store
 Thumbs.db
-*.swp
-.vscode/
-.idea/
 
-# Office temp/locks
-~$*.pptx
+# Office temp/lock files
 ~$*.xlsx
+~$*.pptx
 ~$*.docx
 
-# Python/Jupyter (in case you add later)
+# Python/Jupyter (optional, if added later)
 __pycache__/
 .ipynb_checkpoints/
 *.pyc
-.venv/
-.env
-
-# Large model artifacts (not used here)
-*.pkl
-*.joblib
