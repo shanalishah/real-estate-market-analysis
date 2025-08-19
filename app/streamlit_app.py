@@ -319,7 +319,7 @@ with tabs[1]:
                         alt.Chart(sub_plot)
                         .mark_bar()
                         .encode(
-                            x=alt.X("Equity Reversion:Q", title="Equity Reversion ($)", axis=alt.Axis(format="~s")),
+                            x=alt.X("Equity Reversion:Q", title="Equity Reversion ($)", axis=alt.Axis(format=",.0f")),
                             y=alt.Y("City:N", sort="-x", title=""),
                             tooltip=["City", alt.Tooltip("Equity Reversion:Q", format=",.0f")]
                         )
@@ -335,7 +335,7 @@ with tabs[1]:
                         alt.Chart(sub_plot2)
                         .mark_bar()
                         .encode(
-                            x=alt.X("NOI StdDev:Q", title="NOI Std Dev ($)", axis=alt.Axis(format="~s")),
+                            x=alt.X("NOI StdDev:Q", title="NOI Std Dev ($)", axis=alt.Axis(format=",.0f")),
                             y=alt.Y("City:N", sort="-x", title=""),
                             tooltip=["City", alt.Tooltip("NOI StdDev:Q", format=",.0f")]
                         )
@@ -346,12 +346,20 @@ with tabs[1]:
         # Scatter: NOI vs Vacancy, size by Rent CAGR
         if all(c in dfn.columns for c in ["Avg NOI", "Avg Vacancy", "Avg Rent CAGR", "City"]):
             c_scatter = alt.Chart(dfn).mark_circle().encode(
-                x=alt.X("Avg NOI:Q", title="Average NOI ($)"),
-                y=alt.Y("Avg Vacancy:Q", title="Average Vacancy (%)", axis=alt.Axis(format=".0%")),
+                # x=alt.X("Avg NOI:Q", title="Average NOI ($)"),
+                # y=alt.Y("Avg Vacancy:Q", title="Average Vacancy (%)", axis=alt.Axis(format=".0%")),
+                x=alt.X("Avg NOI:Q", title="Average NOI ($)", axis=alt.Axis(format=",.0f")),
+                y=alt.Y("Avg Vacancy:Q", title="Average Vacancy (%)", axis=alt.Axis(format=".1%")),
                 # size=alt.Size("Avg Rent CAGR:Q", title="Rent CAGR (0–1)", legend=None),
                 size=alt.Size("Avg Rent CAGR:Q", title="Rent CAGR (%)", legend=None),
                 color=alt.Color("City:N", legend=None),
-                tooltip=["City", "Avg NOI", "Avg Vacancy", "Avg Rent CAGR"]
+                # tooltip=["City", "Avg NOI", "Avg Vacancy", "Avg Rent CAGR"]
+                tooltip=[
+                    "City",
+                    alt.Tooltip("Avg NOI:Q", format=",.0f"),
+                    alt.Tooltip("Avg Vacancy:Q", format=".1%"),
+                    alt.Tooltip("Avg Rent CAGR:Q", format=".1%")
+                ]
             ).properties(height=360)
             st.markdown("**NOI vs. Vacancy (bubble = Rent CAGR)**")
             st.altair_chart(c_scatter, use_container_width=True)
