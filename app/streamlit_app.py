@@ -192,10 +192,27 @@ def kpi_from_city_csv(df_city: pd.DataFrame) -> pd.DataFrame:
 # ==============================
 # Sidebar
 # ==============================
+# with st.sidebar:
+#     st.header("Project Context")
+#     st.write(
+#         "- Market screening → composite scoring → development selection\n"
+#         "- Financial feasibility with constraints and sensitivity analysis\n"
+#         "- Excel-first analysis, presented via Streamlit"
+#     )
+#     st.markdown("**Skills Demonstrated**")
+#     st.write(
+#         "- Data analysis & KPI engineering\n"
+#         "- Financial modeling (pro forma)\n"
+#         "- Scenario & sensitivity analysis\n"
+#         "- Comparative market analysis\n"
+#         "- Prescriptive optimization (constraints & mix)"
+#     )
+#     st.markdown("---")
+
 with st.sidebar:
     st.header("Project Context")
     st.write(
-        "- Market screening → composite scoring → development selection\n"
+        "- Market screening → Composite scoring → Development selection\n"
         "- Financial feasibility with constraints and sensitivity analysis\n"
         "- Excel-first analysis, presented via Streamlit"
     )
