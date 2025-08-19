@@ -394,9 +394,14 @@ with tabs[2]:
             expenses_col="Avg Expenses" if "Avg Expenses" in base.columns else None,
             expense_ratio_col="Avg Expense Ratio" if "Avg Expense Ratio" in base.columns else None,
         )
+        # ranked = scored.sort_values("Development Score", ascending=False)
+        # show_df(ranked)
+        # st.download_button("Download Scored Markets CSV", data=ranked.to_csv(index=False), file_name="Market_Scores.csv", use_container_width=True)
         ranked = scored.sort_values("Development Score", ascending=False)
         show_df(ranked)
+        st.caption(f"Vacancy column used: **{base.columns.intersection(['Avg Vacancy','Avg Vacancy Rate']).tolist()}**")
         st.download_button("Download Scored Markets CSV", data=ranked.to_csv(index=False), file_name="Market_Scores.csv", use_container_width=True)
+        
 
         if "City" in ranked.columns:
             c_bars = alt.Chart(ranked).mark_bar().encode(
