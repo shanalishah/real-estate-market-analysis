@@ -1,4 +1,4 @@
-# streamlit_app.py
+# app/streamlit_app.py
 from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -64,7 +64,6 @@ def read_excel_preview(path: Path) -> Dict[str, pd.DataFrame]:
     if not path.exists():
         return out
     try:
-        # Only show meaningful analysis sheets
         allow = {"Single Unit Profit Model", "Buildings", "Financials", "Mix", "Equity"}
         xls = pd.ExcelFile(path)
         for sh in xls.sheet_names:
@@ -169,24 +168,26 @@ def optimize_mix(r_st: float, r_1br: float, vac: float) -> Tuple[int, int, dict]
 
 # ---- Subset from City Summary for Equity Reversion / NOI StdDev ----
 def kpi_from_city_csv(df_city: pd.DataFrame) -> pd.DataFrame:
-    """Return a tidy subset for Equity Reversion and NOI StdDev using your real headers."""
+    """Return a tidy subset for Equity Reversion ($) and NOI StdDev ($), if present."""
     df = df_city.copy()
     rename_map = {
-        # Equity reversion headers seen in your workbook(s)
-        "Avg Equity Reversion": "Equity Reversion",
-        "Average of Equity Reversion": "Equity Reversion",
-        # older variants, if present
-        "Average of Equity Value Growth": "Equity Reversion",
-        "Avg Equity Value Growth": "Equity Reversion",
-        # NOI volatility
-        "NOI Std Dev": "NOI StdDev",
+        "Avg Equity Reversion": "Equity Reversion",          # your sheet header
+        "Equity Reversion": "Equity Reversion",
+        "Average of Equity Value Growth": "Equity Reversion", # legacy alias
+        "Avg Equity Value Growth": "Equity Reversion",        # legacy alias
         "StdDev of Net Operating Income": "NOI StdDev",
-        # City
+        "NOI Std Dev": "NOI StdDev",
         "City": "City",
     }
     df.columns = [rename_map.get(c, c) for c in df.columns]
     keep_cols = [c for c in ["City", "Equity Reversion", "NOI StdDev"] if c in df.columns]
-    return df[keep_cols] if keep_cols else pd.DataFrame()
+    if not keep_cols:
+        return pd.DataFrame()
+    out = df[keep_cols].copy()
+    # force numeric for charts
+    for col in [c for c in keep_cols if c != "City"]:
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+    return out
 
 # ==============================
 # Sidebar
@@ -265,74 +266,65 @@ with tabs[0]:
     else:
         st.info("Upload the CSVs to populate the summary.")
 
-# -------- City KPIs (with charts) --------
+# -------- City KPIs --------
 with tabs[1]:
     st.subheader("City-Level KPIs (Current-State Snapshot)")
-    st.caption("Compare cities on observed metrics such as NOI, vacancy, rent growth, equity reversion, and income volatility.")
+    st.caption("Compare cities on observed metrics such as NOI, vacancy, rent growth, equity reversion, and NOI volatility.")
     df = read_csv(FILES["City Summary"])
     if df is None or df.empty:
         st.info("Upload `City_Level_Market_Summary.csv` into `/data`.")
     else:
         dfn = df.copy()
-        for c in ["Avg Rent CAGR", "Avg Vacancy", "Avg Equity Reversion"]:
+        for c in ["Avg Rent CAGR", "Avg Vacancy"]:
             if c in dfn.columns:
                 dfn[c] = pd.to_numeric(dfn[c], errors="coerce")
-
         show_df(
             dfn.assign(
                 **{
                     "Avg Rent CAGR (%)": (dfn["Avg Rent CAGR"]*100).round(1) if "Avg Rent CAGR" in dfn.columns else None,
-                    "Avg Vacancy (%)": (dfn["Avg Vacancy"]*100).round(1) if "Avg Vacancy" in dfn.columns else None,
-                    "Avg Equity Reversion (%)": (dfn["Avg Equity Reversion"]*100).round(2)
-                        if "Avg Equity Reversion" in dfn.columns else None,
+                    "Avg Vacancy (%)": (dfn["Avg Vacancy"]*100).round(1) if "Avg Vacancy" in dfn.columns else None
                 }
             )
         )
         st.download_button("Download City KPIs CSV", data=df.to_csv(index=False), file_name="City_KPIs.csv", use_container_width=True)
 
-        # ---- Equity Reversion + NOI StdDev tidy view + charts ----
+        # ---- NEW: Equity Reversion ($) + NOI StdDev ($) tidy view + charts ----
         subset = kpi_from_city_csv(df)
         if not subset.empty:
             st.markdown("**Equity Reversion & NOI Volatility (by City)**")
             show_df(subset)
 
-            # Equity Reversion bar (percentage)
-            if "City" in subset.columns and "Equity Reversion" in subset.columns:
-                try:
-                    sub_plot = subset.copy()
-                    sub_plot["Equity Reversion"] = pd.to_numeric(sub_plot["Equity Reversion"], errors="coerce")
-                    chart_er = (
-                        alt.Chart(sub_plot.dropna(subset=["Equity Reversion"]))
+            # Equity Reversion chart (currency)
+            if {"City", "Equity Reversion"}.issubset(subset.columns):
+                sub_plot = subset.dropna(subset=["Equity Reversion"]).copy()
+                if not sub_plot.empty:
+                    chart_ev = (
+                        alt.Chart(sub_plot)
                         .mark_bar()
                         .encode(
+                            x=alt.X("Equity Reversion:Q", title="Equity Reversion ($)", axis=alt.Axis(format="~s")),
                             y=alt.Y("City:N", sort="-x", title=""),
-                            x=alt.X("Equity Reversion:Q", title="Avg Equity Reversion"),
-                            tooltip=["City", alt.Tooltip("Equity Reversion:Q", format=".2%")]
+                            tooltip=["City", alt.Tooltip("Equity Reversion:Q", format=",.0f")]
                         )
                         .properties(height=220)
                     )
-                    st.altair_chart(chart_er, use_container_width=True)
-                except Exception:
-                    pass
+                    st.altair_chart(chart_ev, use_container_width=True)
 
-            # NOI Std Dev bar (dollars; lower = steadier)
-            if "City" in subset.columns and "NOI StdDev" in subset.columns:
-                try:
-                    sub_plot = subset.copy()
-                    sub_plot["NOI StdDev"] = pd.to_numeric(sub_plot["NOI StdDev"], errors="coerce")
-                    chart_noi_sd = (
-                        alt.Chart(sub_plot.dropna(subset=["NOI StdDev"]))
+            # NOI Std Dev chart (currency)
+            if {"City", "NOI StdDev"}.issubset(subset.columns):
+                sub_plot2 = subset.dropna(subset=["NOI StdDev"]).copy()
+                if not sub_plot2.empty:
+                    chart_sd = (
+                        alt.Chart(sub_plot2)
                         .mark_bar()
                         .encode(
-                            y=alt.Y("City:N", sort="x", title=""),
-                            x=alt.X("NOI StdDev:Q", title="NOI Std Dev ($)"),
+                            x=alt.X("NOI StdDev:Q", title="NOI Std Dev ($)", axis=alt.Axis(format="~s")),
+                            y=alt.Y("City:N", sort="-x", title=""),
                             tooltip=["City", alt.Tooltip("NOI StdDev:Q", format=",.0f")]
                         )
                         .properties(height=220)
                     )
-                    st.altair_chart(chart_noi_sd, use_container_width=True)
-                except Exception:
-                    pass
+                    st.altair_chart(chart_sd, use_container_width=True)
 
         # Scatter: NOI vs Vacancy, size by Rent CAGR
         if all(c in dfn.columns for c in ["Avg NOI", "Avg Vacancy", "Avg Rent CAGR", "City"]):
