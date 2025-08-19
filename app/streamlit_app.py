@@ -331,7 +331,8 @@ with tabs[1]:
             c_scatter = alt.Chart(dfn).mark_circle().encode(
                 x=alt.X("Avg NOI:Q", title="Average NOI ($)"),
                 y=alt.Y("Avg Vacancy:Q", title="Average Vacancy (%)", axis=alt.Axis(format=".0%")),
-                size=alt.Size("Avg Rent CAGR:Q", title="Rent CAGR (0–1)", legend=None),
+                # size=alt.Size("Avg Rent CAGR:Q", title="Rent CAGR (0–1)", legend=None),
+                size=alt.Size("Avg Rent CAGR:Q", title="Rent CAGR (%)", legend=None),
                 color=alt.Color("City:N", legend=None),
                 tooltip=["City", "Avg NOI", "Avg Vacancy", "Avg Rent CAGR"]
             ).properties(height=360)
