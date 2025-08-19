@@ -25,6 +25,7 @@ FILES: Dict[str, Path] = {
     "City Summary": DATA / "City_Level_Market_Summary.csv",
     "Development Potential": DATA / "City_Development_Potential.csv",
     "New Hope Pro Forma": DATA / "New_Hope_Class_B_Analysis.csv",
+    "New Hope Units": DATA / "New_Hope_Class_B_Unit_Data.csv",  # optional
 }
 
 NEW_HOPE_NAME = "new hope"  # lowercase for matching
@@ -87,6 +88,13 @@ def fmt_rate(val) -> str:
 def safe_num(s: pd.Series) -> pd.Series:
     return pd.to_numeric(s, errors="coerce")
 
+def first_numeric(df: pd.DataFrame, col: Optional[str]) -> Optional[float]:
+    """Return first non-null numeric value in df[col], or None if not found/col missing."""
+    if col is None or col not in df.columns:
+        return None
+    ser = safe_num(df[col]).dropna()
+    return float(ser.iloc[0]) if not ser.empty else None
+
 # ------------------ Tabs ------------------
 tab_overview, tab_kpis, tab_dev, tab_newhope, tab_scenario, tab_workbook = st.tabs(
     ["Overview", "Market KPIs", "Development Score", "New Hope Pro Forma", "Scenario Sandbox", "Workbook Trace"]
@@ -113,13 +121,15 @@ with tab_overview:
 
     # 1) Top development score city
     if isinstance(df_dev, pd.DataFrame) and not df_dev.empty:
-        # standardize score column
         score_col = find_col(df_dev, ("Development Score", "Score"))
         city_col = find_col(df_dev, ("City", "Market", "MSA"))
         if score_col and city_col:
             dev_sorted = df_dev.sort_values(score_col, ascending=False)
             top_row = dev_sorted.iloc[0]
-            bullets.append(f"**Highest composite development score:** {top_row[city_col]} ({top_row[score_col]:.1f}).")
+            try:
+                bullets.append(f"**Highest composite development score:** {top_row[city_col]} ({float(top_row[score_col]):.1f}).")
+            except Exception:
+                bullets.append(f"**Highest composite development score:** {top_row[city_col]}.")
 
     # 2) New Hope KPIs
     if isinstance(df_city, pd.DataFrame) and not df_city.empty:
@@ -175,7 +185,7 @@ with tab_kpis:
                 df_view[col] = to_pct_series(df_view[col])
         st.dataframe(df_view, use_container_width=True)
 
-        # Simple explorer
+        # Sort/Filter interface
         c_city = find_col(df_view, ("City", "Market", "MSA")) or df_view.columns[0]
         kpi_choices = [c for c in df_view.columns if c != c_city]
         left, right = st.columns([2, 1])
@@ -219,11 +229,12 @@ with tab_newhope:
     else:
         show = df.copy()
         # Prefer helpful columns if they exist
-        prefer = ("NOI", "NOI Margin", "Operating Expenses", "Revenue", "IRR", "DSCR", "Cap Rate", "Cash Flow", "Debt Service")
+        prefer = ("NOI", "NOI Margin", "Operating Expenses", "Revenue",
+                  "IRR", "DSCR", "Cap Rate", "Cash Flow", "Debt Service")
         keep = [c for c in show.columns if any(k.lower().replace(" ", "") in c.lower().replace(" ", "") for k in prefer)]
         show = show[keep] if keep else show
 
-        # Format rate-like columns for readability
+        # Format rate-like columns for the table
         for c in show.columns:
             if any(k in c.lower() for k in ["irr", "margin", "cap", "rate", "%"]):
                 show[c] = safe_num(show[c]).apply(fmt_rate)
@@ -238,36 +249,49 @@ with tab_newhope:
             key="dl_pf"
         )
 
-# ------------------ Scenario Sandbox ------------------
+# ------------------ Scenario Sandbox (robust baselines) ------------------
 with tab_scenario:
     st.subheader("Scenario Sandbox (read-only approximation)")
     st.caption(
         "Adjust high-level shocks to see directional impacts. "
-        "Calculations use the pro forma’s first row if available."
+        "Calculations use the pro forma’s first valid numeric row if available."
     )
     df = read_csv(FILES["New Hope Pro Forma"])
     if df is None or df.empty:
         st.info("Upload `New_Hope_Class_B_Analysis.csv` to `/data`.")
     else:
-        # Find baseline columns
+        # Find columns
         col_rev = find_col(df, ("Revenue", "Total Revenue", "Gross Revenue"))
         col_opex = find_col(df, ("Operating Expenses", "Opex"))
         col_noi = find_col(df, ("NOI",))
         col_debt = find_col(df, ("Debt Service", "Annual Debt Service"))
         col_cap = find_col(df, ("Cap Rate", "CapRate"))
 
-        if not any([col_rev, col_opex, col_noi]):
-            st.warning("Could not find Revenue/Operating Expenses/NOI columns to run a scenario.")
+        # Pull first numeric values from columns (if present)
+        base_rev = first_numeric(df, col_rev)
+        base_opex = first_numeric(df, col_opex)
+        base_noi = first_numeric(df, col_noi)
+        base_debt = first_numeric(df, col_debt)
+        base_cap = first_numeric(df, col_cap)
+
+        # Reconstruct missing baseline pieces when possible
+        if base_rev is None and (base_noi is not None and base_opex is not None):
+            base_rev = base_noi + base_opex
+        if base_opex is None and (base_rev is not None and base_noi is not None):
+            base_opex = max(base_rev - base_noi, 0.0)
+        if base_noi is None and (base_rev is not None and base_opex is not None):
+            base_noi = base_rev - base_opex
+
+        # If still missing critical pieces, explain and stop gracefully
+        if base_noi is None or base_rev is None or base_opex is None:
+            st.warning(
+                "Could not derive a consistent baseline from Revenue/Operating Expenses/NOI. "
+                "Please ensure at least two of these are present in the pro forma CSV."
+            )
         else:
-            base = df.iloc[0].copy()
-            base_rev = float(base[col_rev]) if col_rev else (float(base[col_noi]) + float(base[col_opex]))
-            base_opex = float(base[col_opex]) if col_opex else max(base_rev - float(base[col_noi]), 0.0)
-            base_noi = float(base[col_noi]) if col_noi else (base_rev - base_opex)
-            base_debt = float(base[col_debt]) if col_debt else np.nan
-            base_cap = float(base[col_cap]) if col_cap else np.nan
-            base_margin = base_noi / base_rev if base_rev else np.nan
-            base_value = (base_noi / base_cap) if (col_cap and base_cap and base_cap > 0) else np.nan
-            base_dscr = (base_noi / base_debt) if (col_debt and base_debt and base_debt > 0) else np.nan
+            base_margin = base_noi / base_rev if base_rev > 0 else np.nan
+            base_value = (base_noi / base_cap) if (base_cap and base_cap > 0) else np.nan
+            base_dscr = (base_noi / base_debt) if (base_debt and base_debt > 0) else np.nan
 
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -277,14 +301,14 @@ with tab_scenario:
             with c3:
                 cap_shock = st.slider("Cap rate change (bps)", -200, 200, 0, 25)
 
-            # Scenario calcs
+            # Scenario calculations (skip pieces we cannot compute)
             scen_rev = base_rev * (1 + rev_shock)
             scen_opex = base_opex * (1 + opex_shock)
             scen_noi = scen_rev - scen_opex
             scen_margin = scen_noi / scen_rev if scen_rev else np.nan
-            scen_cap = (base_cap + cap_shock / 10000.0) if col_cap else np.nan
-            scen_value = (scen_noi / scen_cap) if (col_cap and scen_cap and scen_cap > 0) else np.nan
-            scen_dscr = (scen_noi / base_debt) if (col_debt and base_debt and base_debt > 0) else np.nan
+            scen_cap = (base_cap + cap_shock / 10000.0) if base_cap is not None else None
+            scen_value = (scen_noi / scen_cap) if (scen_cap and scen_cap > 0) else np.nan
+            scen_dscr = (scen_noi / base_debt) if (base_debt and base_debt > 0) else np.nan
 
             st.markdown("**Baseline vs Scenario**")
             mcols = st.columns(6)
@@ -298,8 +322,12 @@ with tab_scenario:
             ]
             for (label, b, s, is_rate), col in zip(labels_vals, mcols):
                 with col:
-                    b_txt = fmt_rate(b) if is_rate else (f"${b:,.0f}" if pd.notna(b) else "—")
-                    s_txt = fmt_rate(s) if is_rate else (f"${s:,.0f}" if pd.notna(s) else "—")
+                    if is_rate:
+                        b_txt = fmt_rate(b) if pd.notna(b) else "—"
+                        s_txt = fmt_rate(s) if pd.notna(s) else "—"
+                    else:
+                        b_txt = f"${b:,.0f}" if pd.notna(b) else "—"
+                        s_txt = f"${s:,.0f}" if pd.notna(s) else "—"
                     st.metric(label=label, value=s_txt, delta=(f"vs {b_txt}"))
 
             if pd.notna(scen_value):
