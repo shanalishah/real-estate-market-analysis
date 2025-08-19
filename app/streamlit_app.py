@@ -472,6 +472,7 @@ with tabs[4]:
             st.warning(f"Total units must equal {TOTAL_UNITS}. Currently {n_st + n_1br}.")
         if used_sf > TOTAL_SF:
             st.error(f"Floor area exceeded: {used_sf:,} sf > {TOTAL_SF:,} sf")
+            st.stop() 
 
         # Current-mix metrics
         m = unit_mix_metrics(n_st, n_1br, r_studio, r_1br, vac_rate)
