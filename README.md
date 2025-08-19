@@ -20,4 +20,5 @@ Excel, Python (pandas, numpy, matplotlib), Streamlit (https://real-estate-market
 ## Key Insight
 **New Hope** selected as the most promising market based on growth, vacancy, and development potential.
 
+
 ---
