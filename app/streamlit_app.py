@@ -167,8 +167,23 @@ def optimize_mix(r_st: float, r_1br: float, vac: float) -> Tuple[int, int, dict]
             best = m; best_tuple = (n_st, n_1br)
     return best_tuple[0], best_tuple[1], best or {}
 
+# ---- Subset from City Summary for Equity Growth / NOI StdDev ----
+def kpi_from_city_csv(df_city: pd.DataFrame) -> pd.DataFrame:
+    """Return a tidy subset for Equity Value Growth and NOI StdDev, if present."""
+    df = df_city.copy()
+    rename_map = {
+        "Average of Equity Value Growth": "Equity Value Growth",
+        "Avg Equity Value Growth": "Equity Value Growth",
+        "StdDev of Net Operating Income": "NOI StdDev",
+        "NOI Std Dev": "NOI StdDev",
+        "City": "City",
+    }
+    df.columns = [rename_map.get(c, c) for c in df.columns]
+    keep_cols = [c for c in ["City", "Equity Value Growth", "NOI StdDev"] if c in df.columns]
+    return df[keep_cols] if keep_cols else pd.DataFrame()
+
 # ==============================
-# Sidebar (professional tone)
+# Sidebar
 # ==============================
 with st.sidebar:
     st.header("Project Context")
@@ -177,7 +192,6 @@ with st.sidebar:
         "- Financial feasibility with constraints and sensitivity analysis\n"
         "- Excel-first analysis, presented via Streamlit"
     )
-    # Accurate, document-backed skills
     st.markdown("**Skills Demonstrated**")
     st.write(
         "- Data analysis & KPI engineering\n"
@@ -198,8 +212,7 @@ tabs = st.tabs(["Overview", "City KPIs", "Composite Score", "New Hope Class B", 
 with tabs[0]:
     st.subheader("What This App Shows")
     st.write(
-        "This tool summarizes the market screening and development feasibility workflow for a Class B multifamily asset. "
-
+        "This tool summarizes the market screening and development feasibility workflow for a Class B multifamily asset."
     )
 
     st.subheader("Files Detected")
@@ -267,6 +280,31 @@ with tabs[1]:
             )
         )
         st.download_button("Download City KPIs CSV", data=df.to_csv(index=False), file_name="City_KPIs.csv", use_container_width=True)
+
+        # ---- NEW: Equity Value Growth + NOI StdDev tidy view ----
+        subset = kpi_from_city_csv(df)
+        if not subset.empty:
+            st.markdown("**Equity Value Growth & NOI Volatility (by City)**")
+            show_df(subset)
+
+            # Optional bar chart if Equity Value Growth present
+            if "City" in subset.columns and "Equity Value Growth" in subset.columns:
+                try:
+                    sub_plot = subset.copy()
+                    sub_plot["Equity Value Growth"] = pd.to_numeric(sub_plot["Equity Value Growth"], errors="coerce")
+                    chart_ev = (
+                        alt.Chart(sub_plot.dropna(subset=["Equity Value Growth"]))
+                        .mark_bar()
+                        .encode(
+                            x=alt.X("Equity Value Growth:Q", title="Equity Value Growth"),
+                            y=alt.Y("City:N", sort="-x", title=""),
+                            tooltip=["City", alt.Tooltip("Equity Value Growth:Q", format=".2%")]
+                        )
+                        .properties(height=220)
+                    )
+                    st.altair_chart(chart_ev, use_container_width=True)
+                except Exception:
+                    pass
 
         # Scatter: NOI vs Vacancy, size by Rent CAGR
         if all(c in dfn.columns for c in ["Avg NOI", "Avg Vacancy", "Avg Rent CAGR", "City"]):
