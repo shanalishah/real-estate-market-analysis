@@ -195,8 +195,7 @@ with tabs[0]:
     st.subheader("What This App Shows")
     st.write(
         "This tool summarizes the market screening and development feasibility workflow for a Class B multifamily asset. "
-        "**City Summary** provides the current-state snapshot (NOI, vacancy, expense levels); "
-        "**Development Potential** is a forward-looking view emphasizing growth and feasibility."
+
     )
 
     st.subheader("Files Detected")
