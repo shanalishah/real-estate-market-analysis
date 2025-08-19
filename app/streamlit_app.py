@@ -59,13 +59,17 @@ def read_csv(path: Path) -> Optional[pd.DataFrame]:
 
 @st.cache_data(show_spinner=False)
 def read_excel_preview(path: Path) -> Dict[str, pd.DataFrame]:
-    """Return all sheets as small previews; used with a picker."""
+    """Return previews only for analysis-relevant sheets."""
     out: Dict[str, pd.DataFrame] = {}
     if not path.exists():
         return out
     try:
+        # Only show meaningful analysis sheets
+        allow = {"Single Unit Profit Model", "Buildings", "Financials", "Mix", "Equity"}
         xls = pd.ExcelFile(path)
         for sh in xls.sheet_names:
+            if sh not in allow:
+                continue
             try:
                 out[sh] = xls.parse(sh, nrows=12)
             except Exception:
