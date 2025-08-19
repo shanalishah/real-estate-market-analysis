@@ -330,7 +330,7 @@ with tabs[1]:
         if all(c in dfn.columns for c in ["Avg NOI", "Avg Vacancy", "Avg Rent CAGR", "City"]):
             c_scatter = alt.Chart(dfn).mark_circle().encode(
                 x=alt.X("Avg NOI:Q", title="Average NOI ($)"),
-                y=alt.Y("Avg Vacancy:Q", title="Average Vacancy (0–1)"),
+                y=alt.Y("Avg Vacancy:Q", title="Average Vacancy (%)", axis=alt.Axis(format=".0%")),
                 size=alt.Size("Avg Rent CAGR:Q", title="Rent CAGR (0–1)", legend=None),
                 color=alt.Color("City:N", legend=None),
                 tooltip=["City", "Avg NOI", "Avg Vacancy", "Avg Rent CAGR"]
