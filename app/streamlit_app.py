@@ -58,15 +58,16 @@ def read_csv(path: Path) -> Optional[pd.DataFrame]:
     return None
 
 @st.cache_data(show_spinner=False)
-def read_excel_preview(path: Path, nrows: int = 12) -> Dict[str, pd.DataFrame]:
+def read_excel_preview(path: Path) -> Dict[str, pd.DataFrame]:
+    """Return all sheets as small previews; used with a picker."""
     out: Dict[str, pd.DataFrame] = {}
     if not path.exists():
         return out
     try:
         xls = pd.ExcelFile(path)
-        for sh in xls.sheet_names[:4]:
+        for sh in xls.sheet_names:
             try:
-                out[sh] = xls.parse(sh, nrows=nrows)
+                out[sh] = xls.parse(sh, nrows=12)
             except Exception:
                 pass
     except Exception:
@@ -163,18 +164,25 @@ def optimize_mix(r_st: float, r_1br: float, vac: float) -> Tuple[int, int, dict]
     return best_tuple[0], best_tuple[1], best or {}
 
 # ==============================
-# Sidebar
+# Sidebar (professional tone)
 # ==============================
 with st.sidebar:
     st.header("Project Context")
     st.write(
         "- Market screening → composite scoring → development selection\n"
         "- Financial feasibility with constraints and sensitivity analysis\n"
-        "- Excel-first analysis, surfaced via Streamlit for review"
+        "- Excel-first analysis, presented via Streamlit"
     )
-    st.markdown("**Skills Demonstrated**: KPI engineering, composite scoring, pro forma modeling, constraints, sensitivity.")
+    # Accurate, document-backed skills
+    st.markdown("**Skills Demonstrated**")
+    st.write(
+        "- Data analysis & KPI engineering\n"
+        "- Financial modeling (pro forma)\n"
+        "- Scenario & sensitivity analysis\n"
+        "- Comparative market analysis\n"
+        "- Prescriptive optimization (constraints & mix)"
+    )
     st.markdown("---")
-    st.caption("Place data in `/data`, and the workbook in `/analysis`. See README for details.")
 
 # ==============================
 # Tabs
@@ -184,13 +192,20 @@ tabs = st.tabs(["Overview", "City KPIs", "Composite Score", "New Hope Class B", 
 
 # -------- Overview --------
 with tabs[0]:
+    st.subheader("What This App Shows")
+    st.write(
+        "This tool summarizes the market screening and development feasibility workflow for a Class B multifamily asset. "
+        "**City Summary** provides the current-state snapshot (NOI, vacancy, expense levels); "
+        "**Development Potential** is a forward-looking view emphasizing growth and feasibility."
+    )
+
     st.subheader("Files Detected")
     c1, c2 = st.columns(2)
     with c1:
         for label, p in FILES.items():
             st.write(f"- **{label}:** `{p.name}` — " + ("✅ found" if p.exists() else "❌ missing"))
     with c2:
-        st.write(f"- **Excel model:** `{ANALYSIS_XLSX.name}` — " + ("✅ found" if ANALYSIS_XLSX.exists() else "❌ missing"))
+        st.write(f"- **Excel workbook:** `{ANALYSIS_XLSX.name}` — " + ("✅ found" if ANALYSIS_XLSX.exists() else "❌ missing"))
 
     st.divider()
     st.subheader("Executive Summary")
@@ -208,7 +223,7 @@ with tabs[0]:
             scored = None
         if isinstance(scored, pd.DataFrame) and "City" in scored.columns:
             top_city = scored.sort_values("Development Score", ascending=False).iloc[0]["City"]
-            bullets.append(f"**Highest development score:** {top_city}.")
+            bullets.append(f"**Highest composite development score:** {top_city}.")
 
     if isinstance(df_b, pd.DataFrame) and not df_b.empty:
         row_b = df_b[df_b["Class"].astype(str).str.upper().eq("B")]
@@ -224,13 +239,14 @@ with tabs[0]:
     if bullets:
         for b in bullets:
             st.write("• " + b)
-        st.info("New Hope emerges as the most balanced, return-focused option under current assumptions.")
+        st.info("New Hope emerges as a balanced, return-focused option under the current assumptions.")
     else:
-        st.info("Add CSVs to `/data` to populate the summary.")
+        st.info("Upload the CSVs to populate the summary.")
 
 # -------- City KPIs (with scatter visual) --------
 with tabs[1]:
-    st.subheader("City-Level KPIs")
+    st.subheader("City-Level KPIs (Current-State Snapshot)")
+    st.caption("Compare cities on observed metrics such as NOI, vacancy, and rent growth.")
     df = read_csv(FILES["City Summary"])
     if df is None or df.empty:
         st.info("Upload `City_Level_Market_Summary.csv` into `/data`.")
@@ -263,7 +279,12 @@ with tabs[1]:
 
 # -------- Composite Score (rank bars) --------
 with tabs[2]:
-    st.subheader("Composite Development Score (Adjust Weights)")
+    st.subheader("Composite Development Score (Forward-Looking)")
+    st.caption(
+        "Select a data source and adjust weights. "
+        "**City Summary** reflects current market conditions; "
+        "**Development Potential** emphasizes projected growth and feasibility."
+    )
     df_city = read_csv(FILES["City Summary"])
     df_dev  = read_csv(FILES["Development Potential"])
     if (df_city is None or df_city.empty) and (df_dev is None or df_dev.empty):
@@ -303,6 +324,7 @@ with tabs[2]:
 # -------- New Hope Class B --------
 with tabs[3]:
     st.subheader("New Hope – Class B Summary")
+    st.caption("Key metrics used to benchmark feasibility for the target development class.")
     df_b = read_csv(FILES["New Hope Class B"])
     if df_b is None or df_b.empty:
         st.info("Upload `New_Hope_Class_B_Analysis.csv` to `/data`.")
@@ -317,12 +339,16 @@ with tabs[3]:
 # -------- Unit-Mix & Valuation --------
 with tabs[4]:
     st.subheader("Unit-Mix & Valuation (New Hope, Class B)")
+    st.caption(
+        "Explore studio/1BR mixes under unit and floor-area constraints. "
+        "Outputs include leased units under market capacity, annual NOI, implied value, and DSCR."
+    )
     df_unit = read_csv(FILES["New Hope Unit Rents"])
     if df_unit is None or df_unit.empty:
         st.info("Upload `New_Hope_Class_B_Unit_Data.csv` to `/data`.")
     else:
         r_studio = float(df_unit["Avg Studio Rent"].iloc[0])
-        r_1br    = float(df_unit["Avg 1-Bedroom Rent"].iloc[0])   # <-- keep name as r_1br
+        r_1br    = float(df_unit["Avg 1-Bedroom Rent"].iloc[0])
         vac_rate = float(df_unit["Avg Vacancy Rate"].iloc[0])
         exp_ratio = float(df_unit["Avg Expense Ratio"].iloc[0])
 
@@ -346,7 +372,6 @@ with tabs[4]:
             )
 
         if run_opt:
-            # FIX: use r_1br (not r_1b)
             n_st, n_1br, _best = optimize_mix(r_studio, r_1br, vac_rate)
             st.info(f"Recommended mix (max NOI within constraints): **{n_st} Studios / {n_1br} 1BR**")
 
@@ -427,11 +452,12 @@ with tabs[4]:
 
 # -------- Workbook Preview --------
 with tabs[5]:
-    st.subheader("Workbook Preview (Auditability)")
+    st.subheader("Workbook Preview")
+    st.caption("Quick peek at selected sheets from the supporting Excel model.")
     previews = read_excel_preview(ANALYSIS_XLSX)
     if previews:
-        for i, (sheet, df_sh) in enumerate(previews.items()):
-            st.markdown(f"**Sheet:** {sheet}")
-            show_df(df_sh)
+        sheet_names = list(previews.keys())
+        chosen = st.selectbox("Select a sheet to preview", sheet_names)
+        show_df(previews[chosen])
     else:
         st.info("Upload your Excel workbook to `/analysis` to preview sheets.")
