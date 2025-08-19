@@ -11,7 +11,7 @@ import altair as alt
 # ==============================
 # Page / Paths
 # ==============================
-st.set_page_config(page_title="CRE Market & Development Analysis", layout="wide")
+st.set_page_config(page_title="Commercial Real Estate Market & Development Analysis", layout="wide")
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -73,6 +73,17 @@ def read_excel_preview(path: Path, nrows: int = 12) -> Dict[str, pd.DataFrame]:
         pass
     return out
 
+def show_df(df: pd.DataFrame):
+    """Render DataFrame safely: stringify column names to avoid Arrow mixed-type warnings."""
+    if df is None:
+        return
+    df = df.copy()
+    try:
+        df.columns = df.columns.astype(str)
+    except Exception:
+        pass
+    st.dataframe(df, use_container_width=True)
+
 def zscore(s: pd.Series) -> pd.Series:
     s = pd.to_numeric(s, errors="coerce")
     sd = s.std(ddof=0)
@@ -121,15 +132,15 @@ def fmt_money(x) -> str:
     except Exception:
         return "—"
 
-def unit_mix_metrics(n_st: int, n_1b: int, r_st: float, r_1b: float, vac: float) -> dict:
+def unit_mix_metrics(n_st: int, n_1br: int, r_st: float, r_1br: float, vac: float) -> dict:
     """Compute revenue, opex, NOI with caps, vacancy, fixed & variable costs."""
-    used_sf = n_st*SF_STUDIO + n_1b*SF_1BR
+    used_sf = n_st*SF_STUDIO + n_1br*SF_1BR
     cap_st = cap_by_rent(r_st, is_studio=True)
-    cap_1b = cap_by_rent(r_1b, is_studio=False)
+    cap_1b = cap_by_rent(r_1br, is_studio=False)
     leased_st = min(n_st, cap_st) * (1 - vac)
-    leased_1b = min(n_1b, cap_1b) * (1 - vac)
-    rev_year = 12*(leased_st*r_st + leased_1b*r_1b)
-    var_cost = 12*(n_st*VAR_COST_STUDIO_MO + n_1b*VAR_COST_1BR_MO)
+    leased_1b = min(n_1br, cap_1b) * (1 - vac)
+    rev_year = 12*(leased_st*r_st + leased_1b*r_1br)
+    var_cost = 12*(n_st*VAR_COST_STUDIO_MO + n_1br*VAR_COST_1BR_MO)
     opex_year = FIXED_COST_YR + var_cost
     noi_year = rev_year - opex_year
     return dict(
@@ -138,32 +149,32 @@ def unit_mix_metrics(n_st: int, n_1b: int, r_st: float, r_1b: float, vac: float)
         revenue=rev_year, var_cost=var_cost, opex=opex_year, noi=noi_year
     )
 
-def optimize_mix(r_st: float, r_1b: float, vac: float) -> Tuple[int, int, dict]:
+def optimize_mix(r_st: float, r_1br: float, vac: float) -> Tuple[int, int, dict]:
     """Brute-force search: max NOI under unit & floor constraints."""
     best = None
     best_tuple = (0, 0)
     for n_st in range(TOTAL_UNITS+1):
-        n_1b = TOTAL_UNITS - n_st
-        if n_st*SF_STUDIO + n_1b*SF_1BR > TOTAL_SF:
+        n_1br = TOTAL_UNITS - n_st
+        if n_st*SF_STUDIO + n_1br*SF_1BR > TOTAL_SF:
             continue
-        m = unit_mix_metrics(n_st, n_1b, r_st, r_1b, vac)
+        m = unit_mix_metrics(n_st, n_1br, r_st, r_1br, vac)
         if (best is None) or (m["noi"] > best["noi"]):
-            best = m; best_tuple = (n_st, n_1b)
+            best = m; best_tuple = (n_st, n_1br)
     return best_tuple[0], best_tuple[1], best or {}
 
 # ==============================
-# Sidebar: context
+# Sidebar
 # ==============================
 with st.sidebar:
-    st.header("About this project")
+    st.header("Project Context")
     st.write(
-        "- Market screening → composite scoring → development choice\n"
-        "- Excel-first analysis, surfaced in a clean app\n"
-        "- Scenario & unit-mix modeling reflect Skyline assumptions"
+        "- Market screening → composite scoring → development selection\n"
+        "- Financial feasibility with constraints and sensitivity analysis\n"
+        "- Excel-first analysis, surfaced via Streamlit for review"
     )
-    st.markdown("**Skills**: KPI engineering, scoring, pro-forma logic, constraints, sensitivity.")
+    st.markdown("**Skills Demonstrated**: KPI engineering, composite scoring, pro forma modeling, constraints, sensitivity.")
     st.markdown("---")
-    st.caption("Place data in `/data`, workbook in `/analysis`. See README for details.")
+    st.caption("Place data in `/data`, and the workbook in `/analysis`. See README for details.")
 
 # ==============================
 # Tabs
@@ -213,30 +224,28 @@ with tabs[0]:
     if bullets:
         for b in bullets:
             st.write("• " + b)
-        st.info("New Hope emerges as the most balanced, return-focused option under the assumptions.")
+        st.info("New Hope emerges as the most balanced, return-focused option under current assumptions.")
     else:
         st.info("Add CSVs to `/data` to populate the summary.")
 
 # -------- City KPIs (with scatter visual) --------
 with tabs[1]:
-    st.subheader("City-level KPIs")
+    st.subheader("City-Level KPIs")
     df = read_csv(FILES["City Summary"])
     if df is None or df.empty:
         st.info("Upload `City_Level_Market_Summary.csv` into `/data`.")
     else:
-        # Nice numeric copies
         dfn = df.copy()
         for c in ["Avg Rent CAGR", "Avg Vacancy"]:
             if c in dfn.columns:
                 dfn[c] = pd.to_numeric(dfn[c], errors="coerce")
-        st.dataframe(
+        show_df(
             dfn.assign(
                 **{
                     "Avg Rent CAGR (%)": (dfn["Avg Rent CAGR"]*100).round(1) if "Avg Rent CAGR" in dfn.columns else None,
                     "Avg Vacancy (%)": (dfn["Avg Vacancy"]*100).round(1) if "Avg Vacancy" in dfn.columns else None
                 }
-            ),
-            use_container_width=True
+            )
         )
         st.download_button("Download City KPIs CSV", data=df.to_csv(index=False), file_name="City_KPIs.csv", use_container_width=True)
 
@@ -254,13 +263,13 @@ with tabs[1]:
 
 # -------- Composite Score (rank bars) --------
 with tabs[2]:
-    st.subheader("Composite Development Score (adjust weights)")
+    st.subheader("Composite Development Score (Adjust Weights)")
     df_city = read_csv(FILES["City Summary"])
     df_dev  = read_csv(FILES["Development Potential"])
     if (df_city is None or df_city.empty) and (df_dev is None or df_dev.empty):
         st.info("Upload city CSVs to compute a score.")
     else:
-        source = st.radio("Data source", ["City Summary", "Development Potential"], horizontal=True)
+        source = st.radio("Data Source", ["City Summary", "Development Potential"], horizontal=True)
         base = df_dev if (source == "Development Potential" and isinstance(df_dev, pd.DataFrame)) else df_city
 
         w_noi  = st.slider("Weight: NOI",       0.0, 1.0, 0.40, 0.05)
@@ -278,10 +287,9 @@ with tabs[2]:
             expense_ratio_col="Avg Expense Ratio" if "Avg Expense Ratio" in base.columns else None,
         )
         ranked = scored.sort_values("Development Score", ascending=False)
-        st.dataframe(ranked, use_container_width=True)
+        show_df(ranked)
         st.download_button("Download Scored Markets CSV", data=ranked.to_csv(index=False), file_name="Market_Scores.csv", use_container_width=True)
 
-        # Rank bar chart
         if "City" in ranked.columns:
             c_bars = alt.Chart(ranked).mark_bar().encode(
                 x=alt.X("Development Score:Q", title="Composite Score"),
@@ -303,10 +311,10 @@ with tabs[3]:
         for c in ["Avg Rent CAGR", "Avg Vacancy Rate", "Avg Expense Ratio"]:
             if c in view.columns:
                 view[c] = (pd.to_numeric(view[c], errors="coerce")*100).round(2).astype(str) + "%"
-        st.dataframe(view, use_container_width=True)
+        show_df(view)
         st.download_button("Download Class B Summary CSV", data=df_b.to_csv(index=False), file_name="New_Hope_ClassB.csv", use_container_width=True)
 
-# -------- Unit-Mix & Valuation (heatmap + sensitivity) --------
+# -------- Unit-Mix & Valuation --------
 with tabs[4]:
     st.subheader("Unit-Mix & Valuation (New Hope, Class B)")
     df_unit = read_csv(FILES["New Hope Unit Rents"])
@@ -314,34 +322,42 @@ with tabs[4]:
         st.info("Upload `New_Hope_Class_B_Unit_Data.csv` to `/data`.")
     else:
         r_studio = float(df_unit["Avg Studio Rent"].iloc[0])
-        r_1br    = float(df_unit["Avg 1-Bedroom Rent"].iloc[0])
-        vac_rate = float(df_unit["Avg Vacancy Rate"].iloc[0])       # e.g., 0.10
-        exp_ratio = float(df_unit["Avg Expense Ratio"].iloc[0])     # e.g., 0.50 (context)
+        r_1br    = float(df_unit["Avg 1-Bedroom Rent"].iloc[0])   # <-- keep name as r_1br
+        vac_rate = float(df_unit["Avg Vacancy Rate"].iloc[0])
+        exp_ratio = float(df_unit["Avg Expense Ratio"].iloc[0])
 
-        st.caption(f"Constraints: {TOTAL_UNITS} units · {TOTAL_SF:,} sf · Studio {SF_STUDIO} sf · 1BR {SF_1BR} sf · Fixed ${FIXED_COST_YR:,}/yr · Variable ${VAR_COST_STUDIO_MO}/studio/mo & ${VAR_COST_1BR_MO}/1BR/mo.")
+        st.caption(
+            f"Constraints: {TOTAL_UNITS} units · {TOTAL_SF:,} sf · Studio {SF_STUDIO} sf · "
+            f"1BR {SF_1BR} sf · Fixed ${FIXED_COST_YR:,}/yr · Variable "
+            f"${VAR_COST_STUDIO_MO}/studio/mo & ${VAR_COST_1BR_MO}/1BR/mo."
+        )
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             n_st = st.number_input("Studios", min_value=0, max_value=TOTAL_UNITS, value=55, step=1)
         with c2:
-            n_1b = st.number_input("1-Bedrooms", min_value=0, max_value=TOTAL_UNITS, value=30, step=1)
+            n_1br = st.number_input("1-Bedrooms", min_value=0, max_value=TOTAL_UNITS, value=30, step=1)
         with c3:
             run_opt = st.button("Recommend Best Mix (Max NOI)")
         with c4:
-            st.caption(f"Avg rents → Studio: ${r_studio:,.0f} · 1BR: ${r_1br:,.0f} · Vacancy: {vac_rate:.1%} · Expense Ratio: {exp_ratio:.0%}")
+            st.caption(
+                f"Avg Rents → Studio: ${r_studio:,.0f} · 1BR: ${r_1br:,.0f} · "
+                f"Vacancy: {vac_rate:.1%} · Expense Ratio: {exp_ratio:.0%}"
+            )
 
         if run_opt:
-            n_st, n_1b, _best = optimize_mix(r_studio, r_1b, vac_rate)
-            st.info(f"Recommended mix (max NOI within constraints): **{n_st} Studios / {n_1b} 1BR**")
+            # FIX: use r_1br (not r_1b)
+            n_st, n_1br, _best = optimize_mix(r_studio, r_1br, vac_rate)
+            st.info(f"Recommended mix (max NOI within constraints): **{n_st} Studios / {n_1br} 1BR**")
 
-        used_sf = n_st*SF_STUDIO + n_1b*SF_1BR
-        if n_st + n_1b != TOTAL_UNITS:
-            st.warning(f"Total units must equal {TOTAL_UNITS}. Currently {n_st + n_1b}.")
+        used_sf = n_st*SF_STUDIO + n_1br*SF_1BR
+        if n_st + n_1br != TOTAL_UNITS:
+            st.warning(f"Total units must equal {TOTAL_UNITS}. Currently {n_st + n_1br}.")
         if used_sf > TOTAL_SF:
             st.error(f"Floor area exceeded: {used_sf:,} sf > {TOTAL_SF:,} sf")
 
         # Current-mix metrics
-        m = unit_mix_metrics(n_st, n_1b, r_studio, r_1br, vac_rate)
+        m = unit_mix_metrics(n_st, n_1br, r_studio, r_1br, vac_rate)
         m1, m2, m3, m4, m5, m6 = st.columns(6)
         m1.metric("Used Floor Area", f"{m['used_sf']:,.0f} sf")
         m2.metric("Leased Studios", f"{m['leased_st']:.1f} (cap {m['cap_st']})")
@@ -350,7 +366,7 @@ with tabs[4]:
         m5.metric("Operating Expenses", fmt_money(m["opex"]))
         m6.metric("NOI", fmt_money(m["noi"]))
 
-        # Heatmap: NOI across all feasible mixes (visual search surface)
+        # Heatmap across feasible mixes
         st.markdown("**NOI Heatmap across feasible unit mixes**")
         heat = []
         for s in range(TOTAL_UNITS+1):
@@ -390,9 +406,9 @@ with tabs[4]:
         if show_dscr:
             cols[1].metric("DSCR", f"{dscr:.2f}" if pd.notna(dscr) else "—")
 
-        st.caption("Sensitivity: Implied value vs cap rate")
+        st.caption("Sensitivity: Implied value vs. cap rate")
         cap_range = pd.DataFrame({"Cap Rate": np.linspace(0.035, 0.085, 21)})
-        cap_range["Implied Value"] = cap_range["Cap Rate"].apply(lambda c: m["noi"]/c if c>0 else np.nan)
+        cap_range["Implied Value"] = cap_range["Cap Rate"].apply(lambda c: m["noi"]/c if c > 0 else np.nan)
         sens = alt.Chart(cap_range).mark_line(point=True).encode(
             x=alt.X("Cap Rate:Q", axis=alt.Axis(format=".1%")),
             y=alt.Y("Implied Value:Q", axis=alt.Axis(format="~s")),
@@ -407,15 +423,15 @@ with tabs[4]:
             "Amount": [m["revenue"], m["opex"], m["noi"], FIXED_COST_YR, m["var_cost"]],
         })
         st.table(tdf.assign(Amount=tdf["Amount"].map(lambda x: f"${x:,.0f}")))
-        st.download_button("Download Pro-Forma (current mix)", data=tdf.to_csv(index=False), file_name="ProForma_CurrentMix.csv", use_container_width=True)
+        st.download_button("Download Pro-Forma (Current Mix)", data=tdf.to_csv(index=False), file_name="ProForma_CurrentMix.csv", use_container_width=True)
 
 # -------- Workbook Preview --------
 with tabs[5]:
-    st.subheader("Workbook Preview (auditability)")
+    st.subheader("Workbook Preview (Auditability)")
     previews = read_excel_preview(ANALYSIS_XLSX)
     if previews:
         for i, (sheet, df_sh) in enumerate(previews.items()):
             st.markdown(f"**Sheet:** {sheet}")
-            st.dataframe(df_sh, use_container_width=True)
+            show_df(df_sh)
     else:
         st.info("Upload your Excel workbook to `/analysis` to preview sheets.")
